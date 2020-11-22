@@ -37,7 +37,7 @@ type Statement struct {
 	Schema               *schema.Schema
 	Context              context.Context
 	RaiseErrorOnNotFound bool
-	UpdatingColumn       bool
+	SkipHooks            bool
 	SQL                  strings.Builder
 	Vars                 []interface{}
 	CurDestIndex         int
@@ -190,7 +190,7 @@ func (stmt *Statement) AddVar(writer clause.Writer, vars ...interface{}) {
 				writer.WriteString("(NULL)")
 			}
 		case *DB:
-			subdb := v.Session(&Session{Logger: logger.Discard, DryRun: true, WithConditions: true}).getInstance()
+			subdb := v.Session(&Session{Logger: logger.Discard, DryRun: true}).getInstance()
 			subdb.Statement.Vars = append(subdb.Statement.Vars, stmt.Vars...)
 			subdb.callbacks.Query().Execute(subdb)
 			writer.WriteString(subdb.Statement.SQL.String())
@@ -421,7 +421,7 @@ func (stmt *Statement) clone() *Statement {
 		Schema:               stmt.Schema,
 		Context:              stmt.Context,
 		RaiseErrorOnNotFound: stmt.RaiseErrorOnNotFound,
-		UpdatingColumn:       stmt.UpdatingColumn,
+		SkipHooks:            stmt.SkipHooks,
 	}
 
 	for k, c := range stmt.Clauses {

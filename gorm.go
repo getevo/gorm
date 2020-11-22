@@ -36,6 +36,8 @@ type Config struct {
 	DisableForeignKeyConstraintWhenMigrating bool
 	// AllowGlobalUpdate allow global update
 	AllowGlobalUpdate bool
+	// QueryFields executes the SQL query with all fields of the table
+	QueryFields bool
 
 	// ClauseBuilders clause builder
 	ClauseBuilders map[string]clause.ClauseBuilder
@@ -63,10 +65,12 @@ type DB struct {
 type Session struct {
 	DryRun                 bool
 	PrepareStmt            bool
-	WithConditions         bool
+	NewDB                  bool
+	SkipHooks              bool
 	SkipDefaultTransaction bool
 	AllowGlobalUpdate      bool
 	FullSaveAssociations   bool
+	QueryFields            bool
 	Context                context.Context
 	Logger                 logger.Interface
 	NowFunc                func() time.Time
@@ -169,15 +173,17 @@ func (db *DB) Session(config *Session) *DB {
 		txConfig.FullSaveAssociations = true
 	}
 
-	if config.Context != nil {
+	if config.Context != nil || config.PrepareStmt || config.SkipHooks {
 		tx.Statement = tx.Statement.clone()
 		tx.Statement.DB = tx
+	}
+
+	if config.Context != nil {
 		tx.Statement.Context = config.Context
 	}
 
 	if config.PrepareStmt {
 		if v, ok := db.cacheStore.Load("preparedStmt"); ok {
-			tx.Statement = tx.Statement.clone()
 			preparedStmt := v.(*PreparedStmtDB)
 			tx.Statement.ConnPool = &PreparedStmtDB{
 				ConnPool: db.Config.ConnPool,
@@ -189,12 +195,20 @@ func (db *DB) Session(config *Session) *DB {
 		}
 	}
 
-	if config.WithConditions {
+	if config.SkipHooks {
+		tx.Statement.SkipHooks = true
+	}
+
+	if !config.NewDB {
 		tx.clone = 2
 	}
 
 	if config.DryRun {
 		tx.Config.DryRun = true
+	}
+
+	if config.QueryFields {
+		tx.Config.QueryFields = true
 	}
 
 	if config.Logger != nil {
@@ -210,14 +224,13 @@ func (db *DB) Session(config *Session) *DB {
 
 // WithContext change current instance db's context to ctx
 func (db *DB) WithContext(ctx context.Context) *DB {
-	return db.Session(&Session{WithConditions: true, Context: ctx})
+	return db.Session(&Session{Context: ctx})
 }
 
 // Debug start debug mode
 func (db *DB) Debug() (tx *DB) {
 	return db.Session(&Session{
-		WithConditions: true,
-		Logger:         db.Logger.LogMode(logger.Info),
+		Logger: db.Logger.LogMode(logger.Info),
 	})
 }
 
